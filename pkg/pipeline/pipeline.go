@@ -30,9 +30,7 @@ func (p *Pipeline) createInstance() *Instance {
 			max = instance.ID
 		}
 	}
-	instance := &Instance{
-		ID: max + 1,
-	}
+	instance := makeInstance(max + 1)
 	p.Instances = append(p.Instances, instance)
 	return instance
 }
@@ -47,8 +45,7 @@ func (p *Pipeline) getInstance(id int) *Instance {
 }
 
 func (p *Pipeline) deleteInstance(target *Instance) {
-	p.deleteInstanceResourceAll(target, "job")
-	p.deleteInstanceResourceAll(target, "svc")
+	p.deleteInstanceResources(nil, target)
 
 	for i, instance := range p.Instances {
 		if instance == target {

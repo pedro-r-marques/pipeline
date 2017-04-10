@@ -63,7 +63,7 @@ func (exec *mrExecutor) handlePipelineRun(event *evPipelineRun) {
 	p.State = StateRunning
 	instance.Stage = event.taskIndex
 	instance.State = StateRunning
-	instance.JobsStatus = nil
+	// instance.JobsStatus = nil
 
 	// create task
 	exec.events <- &evTaskCreate{p, instance.ID, event.taskIndex}
@@ -213,34 +213,34 @@ func instanceFailuresShouldAbort(spec *Spec, taskIndex int, status []*jobStatus)
 	var instanceCount int
 	if len(task.TemplateList) > 0 {
 		for i := range task.TemplateList {
-			tmpl := &task.TemplateList[i]
+			tmpl := task.TemplateList[i]
 			instanceCount += tmpl.Instances
 		}
 	} else {
-		instanceCount = task.Template.Instances
+		instanceCount = task.Instances
 	}
 
 	return int(current.Failed) > (instanceCount + instanceCount/2)
 }
 
 func (exec *mrExecutor) updateInstanceStatus(p *Pipeline, instance *Instance) bool {
-	status := instanceJobStatus(p, instance)
-	events := jobStatusDelta(p, instance.ID, instance.JobsStatus, status)
-	instance.JobsStatus = status
-	nextStatus := taskState(status)
-	if instanceFailuresShouldAbort(p.Spec, instance.Stage, status) {
-		exec.events <- &evTaskAbort{p, instance.ID, instance.Stage, "Too many failures", time.Now()}
-		instance.Current = nextStatus
-		return true
-	}
-	if events != nil && len(events) > 0 {
-		lastEv := events[0]
-		exec.events <- lastEv
-	} else if instance.Current != nil &&
-		instance.Current.Running == 0 && nextStatus.Running == 0 {
-		instance.State = StateStopped
-	}
-	instance.Current = nextStatus
+	// status := instanceJobStatus(p, instance)
+	// events := jobStatusDelta(p, instance.ID, instance.JobsStatus, status)
+	// instance.JobsStatus = status
+	// nextStatus := taskState(status)
+	// if instanceFailuresShouldAbort(p.Spec, instance.Stage, status) {
+	// 	exec.events <- &evTaskAbort{p, instance.ID, instance.Stage, "Too many failures", time.Now()}
+	// 	instance.Current = nextStatus
+	// 	return true
+	// }
+	// if events != nil && len(events) > 0 {
+	// 	lastEv := events[0]
+	// 	exec.events <- lastEv
+	// } else if instance.Current != nil &&
+	// 	instance.Current.Running == 0 && nextStatus.Running == 0 {
+	// 	instance.State = StateStopped
+	// }
+	// instance.Current = nextStatus
 
 	return instance.State == StateRunning
 }

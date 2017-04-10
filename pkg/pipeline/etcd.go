@@ -8,7 +8,8 @@ import (
 	"github.com/coreos/etcd/client"
 )
 
-type lockManager interface {
+// LockManager defines the interface used for job instance id management.
+type LockManager interface {
 	DeleteLock(namespace, lockname string, id int) error
 }
 
@@ -18,7 +19,7 @@ type etcdLockManager struct {
 }
 
 // NewEtcdLockManager creates an etcd lock manager client
-func NewEtcdLockManager(endpoint string) lockManager {
+func NewEtcdLockManager(endpoint string) LockManager {
 	cfg := client.Config{
 		Endpoints: []string{endpoint},
 		Transport: client.DefaultTransport,
@@ -43,7 +44,8 @@ func (m *etcdLockManager) DeleteLock(namespace, lockname string, id int) error {
 	// }
 	// return client.DeleteDir()
 	path := lockname
-	ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 	_, err := m.api.Delete(ctx, path, &client.DeleteOptions{Recursive: true, Dir: true})
 	return err
 }

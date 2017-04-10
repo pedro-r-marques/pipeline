@@ -18,14 +18,15 @@ type Instance struct {
 	// StartStage is stage that the pipeline was (re)started at.
 	StartStage int
 
-	workDir    string
-	JobsStatus []*jobStatus
+	workDir string
+	// JobsStatus []*jobStatus
 
 	Stage int
 	State ExecState
 
+	taskList []*Task
 	// Result of current status
-	Current *taskStatus
+	// Current *taskStatus
 }
 
 type taskStatus struct {
@@ -39,6 +40,12 @@ type jobStatus struct {
 	taskIndex int
 	jobIndex  int
 	batchapi.JobStatus
+}
+
+func makeInstance(id int) *Instance {
+	return &Instance{
+		ID: id,
+	}
 }
 
 func (s *jobStatus) IsRunning() bool {

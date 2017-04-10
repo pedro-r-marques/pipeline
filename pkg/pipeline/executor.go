@@ -8,6 +8,9 @@ import (
 	"strconv"
 	"sync"
 	"time"
+
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 )
 
 // Executor is the interface for the executor class.
@@ -34,6 +37,7 @@ type mrExecutor struct {
 	dataDir        string
 	events         chan smEvent
 	cron           Cron
+	k8sClient      *kubernetes.Clientset
 }
 
 func (exec *mrExecutor) PipelineLookup(name string) *Pipeline {
@@ -93,7 +97,7 @@ func (exec *mrExecutor) PipelineReload(p *Pipeline) error {
 
 	p.Spec = spec
 	for _, instance := range p.Instances {
-		instance.JobsStatus = nil
+		// instance.JobsStatus = nil
 		instance.Stage = 0
 	}
 
@@ -246,10 +250,23 @@ func (exec *mrExecutor) checkpointConfig() {
 
 // NewExecutor allocates an Executor.
 func NewExecutor(dataDir string) Executor {
+
+	// creates the in-cluster config
+	config, err := rest.InClusterConfig()
+	if err != nil {
+		log.Fatal(err)
+	}
+	// creates the clientset
+	clientset, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	return &mrExecutor{
 		pipelines: make(map[string]*Pipeline),
 		dataDir:   dataDir,
 		events:    make(chan smEvent, 16),
 		cron:      NewCronExecutor(),
+		k8sClient: clientset,
 	}
 }

@@ -3,13 +3,11 @@ package pipeline
 import (
 	"fmt"
 	"io"
-	"io/ioutil"
 	"path/filepath"
 	"strings"
 
-	"github.com/go-yaml/yaml"
-
 	api "k8s.io/client-go/pkg/api/v1"
+	"k8s.io/client-go/pkg/util/yaml"
 )
 
 // Spec defines the specification for a pipeline.
@@ -32,11 +30,19 @@ type TaskSpec struct {
 	// Task name
 	Name string
 
-	EtcdLock string `yaml:"etcd_lock"`
+	EtcdLock string `json:"etcd_lock"`
 
-	Services     []ServiceSpec `yaml:"services"`
-	Template     JobTemplate   `yaml:",inline"`
-	TemplateList []JobTemplate `yaml:"jobs"`
+	Services     []ServiceSpec  `json:"services"`
+	TemplateList []*JobTemplate `json:"jobs,omitempty"`
+	JobTemplate  `json:",inline"`
+}
+
+// JobSpecs returns the jobs for a taskSpec.
+func (s *TaskSpec) JobSpecs() []*JobTemplate {
+	if len(s.TemplateList) == 0 {
+		return []*JobTemplate{&s.JobTemplate}
+	}
+	return s.TemplateList
 }
 
 // ServiceSpec defines the specification for a service.
@@ -100,10 +106,10 @@ func defaultPipelineSpecValues(spec *Spec, dataDir string) {
 	for i := range spec.Tasks {
 		task := &spec.Tasks[i]
 		if len(task.TemplateList) == 0 {
-			defaultJobTemplateValues(&task.Template, dataDir)
+			defaultJobTemplateValues(&task.JobTemplate, dataDir)
 		} else {
 			for k := range task.TemplateList {
-				tmpl := &task.TemplateList[k]
+				tmpl := task.TemplateList[k]
 				defaultJobTemplateValues(tmpl, dataDir)
 			}
 		}
@@ -135,7 +141,7 @@ func validateJobTemplate(tmpl *JobTemplate) error {
 
 func getTaskJobByName(task *TaskSpec, name string) *JobTemplate {
 	for i := 0; i < len(task.TemplateList); i++ {
-		tmpl := &task.TemplateList[i]
+		tmpl := task.TemplateList[i]
 		if tmpl.Job == name {
 			return tmpl
 		}
@@ -173,16 +179,15 @@ func validatePipelineConfig(spec *Spec) error {
 	for i := range spec.Tasks {
 		task := &spec.Tasks[i]
 		if len(task.TemplateList) == 0 {
-			if err := validateJobTemplate(&task.Template); err != nil {
+			if err := validateJobTemplate(&task.JobTemplate); err != nil {
 				return err
 			}
-
 		} else {
-			if !isJobTemplateEmpty(&task.Template) {
+			if !isJobTemplateEmpty(&task.JobTemplate) {
 				return &validationError{"task template and template-list are mutually exclusive"}
 			}
 			for k := range task.TemplateList {
-				tmpl := &task.TemplateList[k]
+				tmpl := task.TemplateList[k]
 				if err := validateJobTemplate(tmpl); err != nil {
 					return err
 				}
@@ -211,18 +216,14 @@ func canonicalizeSpecValues(s *Spec) {
 }
 
 func parsePipelineConfig(rd io.Reader, dataDir string) (*Spec, error) {
-	content, err := ioutil.ReadAll(rd)
-	if err != nil {
-		return nil, err
-	}
+	decoder := yaml.NewYAMLOrJSONDecoder(rd, 4096)
 
 	var spec Spec
-	err = yaml.Unmarshal(content, &spec)
-	if err != nil {
+	if err := decoder.Decode(&spec); err != nil {
 		return nil, err
 	}
 	defaultPipelineSpecValues(&spec, dataDir)
 	canonicalizeSpecValues(&spec)
-	err = validatePipelineConfig(&spec)
+	err := validatePipelineConfig(&spec)
 	return &spec, err
 }
