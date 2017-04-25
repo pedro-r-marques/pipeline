@@ -35,7 +35,7 @@ func (p *Pipeline) createInstance() *Instance {
 	instance := makeInstance(max + 1)
 
 	var err error
-	instance.taskList, err = createTaskList(p.Config, instance.ID)
+	instance.TaskList, err = createTaskList(p.Config, instance.ID)
 	if err != nil {
 		log.Println(err)
 		return nil

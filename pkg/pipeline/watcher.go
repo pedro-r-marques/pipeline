@@ -47,6 +47,7 @@ func (w *Watcher) runOnce(podWatcher, jobWatcher watch.Interface, eventChan chan
 			eventChan <- &evPipelineStatus{
 				w.pipeline,
 				w.instance,
+				job.UID,
 				job.Status,
 			}
 		case watch.Deleted:

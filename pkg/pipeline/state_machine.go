@@ -6,6 +6,7 @@ import (
 	"time"
 
 	batch_v1 "k8s.io/client-go/pkg/apis/batch/v1"
+	"k8s.io/client-go/pkg/types"
 )
 
 type smEventType int
@@ -58,7 +59,7 @@ func (exec *mrExecutor) handlePipelineRun(event *evPipelineRun) {
 	instance := p.getInstance(event.instanceID)
 
 	// delete all jobs greater >= taskIndex
-	for i := event.taskIndex; i < len(instance.taskList); i++ {
+	for i := event.taskIndex; i < len(instance.TaskList); i++ {
 		p.deleteTaskResources(exec.k8sClient, instance, i)
 	}
 
@@ -78,6 +79,7 @@ func (exec *mrExecutor) handlePipelineRun(event *evPipelineRun) {
 type evPipelineStatus struct {
 	pipeline *Pipeline
 	instance *Instance
+	jobID    types.UID
 	status   batch_v1.JobStatus
 }
 
@@ -86,14 +88,27 @@ func (ev *evPipelineStatus) String() string {
 	return "PipelineStatus " + ev.pipeline.Name
 }
 func (exec *mrExecutor) handlePipelineStatus(event *evPipelineStatus) {
-	// pipeline := event.pipeline
-	// instance := event.instance
+	pipeline := event.pipeline
+	instance := event.instance
 
 	// fetch the running task
+	task := instance.TaskList[instance.Stage]
 
 	// ensure that this job is in the running task
-	status := event.status
+	var found bool
+	for _, id := range task.JobIDs {
+		if event.jobID == id {
+			found = true
+			break
+		}
+	}
 
+	if !found {
+		log.Printf("unexpected event for job %s", event.jobID)
+		return
+	}
+
+	status := event.status
 	var complete bool
 	for _, cond := range status.Conditions {
 		if cond.Type == batch_v1.JobComplete {
@@ -104,11 +119,33 @@ func (exec *mrExecutor) handlePipelineStatus(event *evPipelineStatus) {
 
 	// if all jobs are complete, advance to next task
 	if complete {
-
+		log.Printf("job %s complete", event.jobID)
+		task.completed++
 	}
 
+	if task.completed == len(task.jobs) {
+		exec.events <- &evTaskComplete{
+			pipeline:   pipeline,
+			instanceID: instance.ID,
+			taskIndex:  instance.Stage,
+		}
+		return
+	}
 	// if the number of failures has gone past threshold abort
 	// 	exec.events <- &evTaskAbort{p, instance.ID, instance.Stage, "Too many failures", time.Now()}
+}
+
+type evPipelineStop struct {
+	pipeline *Pipeline
+}
+
+func (ev *evPipelineStop) eventType() smEventType { return eventPipelineStop }
+func (ev *evPipelineStop) String() string {
+	return "PipelineStop " + ev.pipeline.Name
+}
+func (exec *mrExecutor) handlePipelineStop(event *evPipelineStop) {
+	p := event.pipeline
+	p.State = StateStopped
 }
 
 type evInstanceDelete struct {
@@ -202,9 +239,20 @@ func (exec *mrExecutor) handleTaskComplete(event *evTaskComplete) {
 	if event.taskIndex < len(p.Config.Spec.Tasks)-1 {
 		instance.Stage = event.taskIndex + 1
 		exec.events <- &evTaskCreate{p, event.instanceID, instance.Stage}
-	} else {
-		instance.State = StateStopped
+		return
 	}
+
+	instance.State = StateStopped
+	var running int
+	for _, instanceIter := range p.Instances {
+		if instanceIter.State == StateRunning {
+			running++
+		}
+	}
+	if running == 0 {
+		exec.events <- &evPipelineStop{p}
+	}
+
 }
 
 func (exec *mrExecutor) periodicCheck() {
@@ -224,6 +272,8 @@ func (exec *mrExecutor) runOnce(t *time.Ticker) {
 			exec.handlePipelineRun(ev.(*evPipelineRun))
 		case eventPipelineStatus:
 			exec.handlePipelineStatus(ev.(*evPipelineStatus))
+		case eventPipelineStop:
+			exec.handlePipelineStop(ev.(*evPipelineStop))
 		case eventInstanceDelete:
 			exec.handleInstanceDelete(ev.(*evInstanceDelete))
 		case eventTaskCreate:

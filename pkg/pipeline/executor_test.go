@@ -1,6 +1,7 @@
 package pipeline
 
 import (
+	"log"
 	"testing"
 	"time"
 
@@ -8,6 +9,21 @@ import (
 	api_v1 "k8s.io/client-go/pkg/api/v1"
 	batch_v1 "k8s.io/client-go/pkg/apis/batch/v1"
 )
+
+func genJobCompletionEvent(exec *mrExecutor, pipeline *Pipeline, job *batch_v1.Job) {
+	exec.events <- &evPipelineStatus{
+		pipeline: pipeline,
+		instance: pipeline.Instances[0],
+		jobID:    job.UID,
+		status: batch_v1.JobStatus{
+			Conditions: []batch_v1.JobCondition{
+				{
+					Type: batch_v1.JobComplete,
+				},
+			},
+		},
+	}
+}
 
 func TestPipelineExec(t *testing.T) {
 	exec := &mrExecutor{
@@ -77,17 +93,53 @@ func TestPipelineExec(t *testing.T) {
 		t.Error(len(jobList.Items))
 	}
 
-	exec.events <- &evPipelineStatus{
-		pipeline: pipeline,
-		instance: pipeline.Instances[0],
-		status: batch_v1.JobStatus{
-			Conditions: []batch_v1.JobCondition{
-				{
-					Type: batch_v1.JobComplete,
-				},
-			},
-		},
+	genJobCompletionEvent(exec, pipeline, &jobList.Items[0])
+
+	exec.runOnce(timeout)
+	exec.runOnce(timeout)
+	exec.runOnce(timeout)
+
+	j2List, err := exec.k8sClient.BatchV1().Jobs(config.Spec.Namespace).List(api_v1.ListOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(j2List.Items) != 3 {
+		t.Error(len(j2List.Items))
+	}
+
+	var j2a bool
+	for _, job := range j2List.Items {
+		log.Println(job.Name)
+		if job.Name == "test-2a-1" {
+			genJobCompletionEvent(exec, pipeline, &job)
+			j2a = true
+			break
+		}
+	}
+	if !j2a {
+		t.Error("job not found")
 	}
 
 	exec.runOnce(timeout)
+
+	var j2b bool
+	for _, job := range j2List.Items {
+		if job.Name == "test-2b-1" {
+			genJobCompletionEvent(exec, pipeline, &job)
+			j2b = true
+			break
+		}
+	}
+	if !j2b {
+		t.Error("job not found")
+	}
+
+	exec.runOnce(timeout)
+	exec.runOnce(timeout)
+	exec.runOnce(timeout)
+	exec.runOnce(timeout)
+
+	if pipeline.State != StateStopped {
+		t.Error(pipeline.State)
+	}
 }

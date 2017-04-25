@@ -10,12 +10,18 @@ import (
 	api_v1 "k8s.io/client-go/pkg/api/v1"
 	batch_v1 "k8s.io/client-go/pkg/apis/batch/v1"
 	"k8s.io/client-go/pkg/labels"
+	"k8s.io/client-go/pkg/types"
 )
 
 // Task contains the kubernetes definition for a task.
 type Task struct {
 	svc  *api.Service
 	jobs []*batch_v1.Job
+
+	// scheduled job IDs
+	JobIDs []types.UID
+
+	completed int
 }
 
 func createTaskList(config *Config, instanceID int) ([]*Task, error) {
@@ -32,12 +38,13 @@ func createTaskList(config *Config, instanceID int) ([]*Task, error) {
 }
 
 func (p *Pipeline) createTask(k8sClient kubernetes.Interface, instance *Instance, stage int) error {
-	task := instance.taskList[stage]
+	task := instance.TaskList[stage]
 	for _, job := range task.jobs {
-		_, err := k8sClient.BatchV1().Jobs(p.Config.Spec.Namespace).Create(job)
+		j, err := k8sClient.BatchV1().Jobs(p.Config.Spec.Namespace).Create(job)
 		if err != nil {
 			return err
 		}
+		task.JobIDs = append(task.JobIDs, j.UID)
 	}
 	return nil
 }

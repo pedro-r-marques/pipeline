@@ -15,14 +15,12 @@ type Instance struct {
 	Hash       []byte // TODO: md5 hash of config
 
 	workDir string
-	// JobsStatus []*jobStatus
 
 	Stage int
 	State ExecState
 
-	taskList []*Task
-	// Result of current status
-	// Current *taskStatus
+	TaskList []*Task
+
 	watcher *Watcher
 }
 
