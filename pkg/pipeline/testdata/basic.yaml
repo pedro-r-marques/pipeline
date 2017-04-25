@@ -1,0 +1,23 @@
+name: mr_sitedata
+namespace: roque
+storage: gs://laserlike_roque/mr
+tasks:
+  - name: token-allocator
+    image: gcr.io/laserlike-1167/roque-mr_cooccur_token_allocator
+    args:
+      - -v=3
+  - name: compute
+    jobs:
+        - job: master
+          image: gcr.io/laserlike-1167/roque-mr_cofilter_compute          
+        - job: worker
+          image: gcr.io/laserlike-1167/roque-mr_cofilter_compute
+          instances: 16
+          resources:
+            requests:
+              memory: 12Gi
+              cpu: "1"
+            limits:
+              memory: 14Gi
+              cpu: "1"
+            

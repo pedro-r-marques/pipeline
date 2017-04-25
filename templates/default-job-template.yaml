@@ -1,0 +1,59 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{.Pipeline.TaskPrefix}}-{{.Task.Name}}-{{.Pipeline.ID}}
+  namespace: {{.Pipeline.Namespace}}
+  labels:
+    pipeline: {{.Pipeline.Name}}
+    id: "{{.Pipeline.ID}}"
+    task: {{.Task.Name}}
+spec:
+{{- if ne .Instances 1 }}
+  completions: {{.Instances}}
+{{- end }}
+{{- if ne .Parallelism 1 }}
+  parallelism: {{.Parallelism}}
+{{- end }}
+  template:
+    metadata:
+      labels:
+        pipeline: {{.Pipeline.Name}}
+        id: "{{.Pipeline.ID}}"
+        task: {{.Task.Name}}
+    spec:
+      containers:
+        - name: {{.Task.Name}}
+          image: {{.Task.Image}}
+          args:
+            - -logtostderr
+{{- if .Pipeline.WorkDir }}
+            - -workdir={{.Pipeline.WorkDir}}
+{{- end }}
+{{- if .Task.EtcdLock }}
+            - -etcd-lock={{.Pipeline.Name}}-{{.Task.EtcdLock}}-{{.Pipeline.ID}}
+            - -instances={{.Instances}}
+{{- end }}
+{{- range .Args }}
+            - {{.}}
+{{- end }}
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: KUBERNETES_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+{{- if isResourceSpecSet .Resources }}
+          resources:
+{{- if isResourceListSet .Resources.Requests }}
+            requests:
+              {{ printResourceList .Resources.Requests 14 }}
+{{- end }}
+{{- if isResourceListSet .Resources.Limits }}
+            limits:
+              {{ printResourceList .Resources.Limits 14 }}
+{{- end }}
+{{- end}}
+      restartPolicy: Never

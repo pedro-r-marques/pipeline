@@ -37,7 +37,7 @@ type mrExecutor struct {
 	dataDir        string
 	events         chan smEvent
 	cron           Cron
-	k8sClient      *kubernetes.Clientset
+	k8sClient      kubernetes.Interface
 }
 
 func (exec *mrExecutor) PipelineLookup(name string) *Pipeline {
@@ -56,24 +56,24 @@ func (exec *mrExecutor) PipelineAdd(name, uri string) error {
 	defer rd.Close()
 
 	// parse the configuration file
-	spec, err := parsePipelineConfig(rd, exec.dataDir)
+	conf, err := parsePipelineConfig(rd, exec.dataDir)
 	if err != nil {
 		return err
 	}
 
 	p := &Pipeline{
-		Name:  name,
-		URI:   uri,
-		State: StateStopped,
-		Spec:  spec,
+		Name:   name,
+		URI:    uri,
+		State:  StateStopped,
+		Config: conf,
 	}
 	exec.Lock()
 	defer exec.Unlock()
 
 	exec.pipelines[name] = p
-	if p.Spec.Schedule != nil {
+	if p.Config.Spec.Schedule != nil {
 		t := &pipelineTrigger{exec, p}
-		exec.cron.Add(p.Name, p.Spec.Schedule, t.trigger)
+		exec.cron.Add(p.Name, p.Config.Spec.Schedule, t.trigger)
 	}
 	return nil
 }
@@ -86,24 +86,24 @@ func (exec *mrExecutor) PipelineReload(p *Pipeline) error {
 	defer rd.Close()
 
 	// parse the configuration file
-	spec, err := parsePipelineConfig(rd, exec.dataDir)
+	conf, err := parsePipelineConfig(rd, exec.dataDir)
 	if err != nil {
 		return err
 	}
 
-	if p.Spec.Schedule != nil {
+	if p.Config.Spec.Schedule != nil {
 		exec.cron.Delete(p.Name)
 	}
 
-	p.Spec = spec
+	p.Config = conf
 	for _, instance := range p.Instances {
 		// instance.JobsStatus = nil
 		instance.Stage = 0
 	}
 
-	if p.Spec.Schedule != nil {
+	if sched := p.Config.Spec.Schedule; sched != nil {
 		t := &pipelineTrigger{exec, p}
-		exec.cron.Add(p.Name, p.Spec.Schedule, t.trigger)
+		exec.cron.Add(p.Name, sched, t.trigger)
 	}
 
 	return nil
@@ -113,7 +113,7 @@ func (exec *mrExecutor) PipelineDelete(p *Pipeline) {
 	exec.Lock()
 	defer exec.Unlock()
 	delete(exec.pipelines, p.Name)
-	if p.Spec.Schedule != nil {
+	if p.Config.Spec.Schedule != nil {
 		exec.cron.Delete(p.Name)
 	}
 }
@@ -195,8 +195,8 @@ func (exec *mrExecutor) Clone(p *Pipeline, prevID int, includePat, excludePat st
 	}
 
 	instance := p.createInstance()
-	prevDir := p.Spec.Storage + "/" + strconv.Itoa(prevID)
-	workDir := p.Spec.Storage + "/" + strconv.Itoa(instance.ID)
+	prevDir := p.Config.Spec.Storage + "/" + strconv.Itoa(prevID)
+	workDir := p.Config.Spec.Storage + "/" + strconv.Itoa(instance.ID)
 	return copyWorkDir(prevDir, workDir, reIncl, reExcl)
 }
 
@@ -217,11 +217,11 @@ func (exec *mrExecutor) Configure(uri string) error {
 	}
 	exec.pipelines = pipelines
 	for _, p := range pipelines {
-		if p.Spec.Schedule == nil {
+		if p.Config.Spec.Schedule == nil {
 			continue
 		}
 		t := &pipelineTrigger{exec, p}
-		exec.cron.Add(p.Name, p.Spec.Schedule, t.trigger)
+		exec.cron.Add(p.Name, p.Config.Spec.Schedule, t.trigger)
 	}
 	return nil
 }

@@ -1,0 +1,70 @@
+{
+  "kind": "Job",
+  "apiVersion": "batch/v1",
+  "metadata": {
+    "name": "mr-sitedata-worker-1",
+    "namespace": "roque",
+    "creationTimestamp": null,
+    "labels": {
+      "id": "1",
+      "pipeline": "mr_sitedata",
+      "task": "worker"
+    }
+  },
+  "spec": {
+    "parallelism": 16,
+    "completions": 16,
+    "template": {
+      "metadata": {
+        "creationTimestamp": null,
+        "labels": {
+          "id": "1",
+          "pipeline": "mr_sitedata",
+          "task": "worker"
+        }
+      },
+      "spec": {
+        "containers": [
+          {
+            "name": "worker",
+            "image": "gcr.io/laserlike-1167/roque-mr_cofilter_compute",
+            "args": [
+              "-logtostderr",
+              "-workdir=gs://laserlike_roque/mr/1"
+            ],
+            "env": [
+              {
+                "name": "POD_NAME",
+                "valueFrom": {
+                  "fieldRef": {
+                    "fieldPath": "metadata.name"
+                  }
+                }
+              },
+              {
+                "name": "KUBERNETES_NAMESPACE",
+                "valueFrom": {
+                  "fieldRef": {
+                    "fieldPath": "metadata.namespace"
+                  }
+                }
+              }
+            ],
+            "resources": {
+              "limits": {
+                "cpu": "1",
+                "memory": "14Gi"
+              },
+              "requests": {
+                "cpu": "1",
+                "memory": "12Gi"
+              }
+            }
+          }
+        ],
+        "restartPolicy": "Never"
+      }
+    }
+  },
+  "status": {}
+}

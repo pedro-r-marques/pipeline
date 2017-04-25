@@ -1,0 +1,36 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: mr-sitedata-normalize-1
+  namespace: roque
+  labels:
+    pipeline: mr_sitedata
+    id: "1"
+    task: normalize
+spec:
+  completions: 4
+  parallelism: 4
+  template:
+    metadata:
+      labels:
+        pipeline: mr_sitedata
+        id: "1"
+        task: normalize
+    spec:
+      containers:
+        - name: normalize
+          image: gcr.io/laserlike-1167/roque-normalize
+          args:
+            - -logtostderr
+            - -workdir=gs://laserlike_roque/mr/1
+            - -etcd-lock=mr-sitedata-mr_normalize-1
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: KUBERNETES_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+      restartPolicy: Never

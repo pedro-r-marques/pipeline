@@ -1,14 +1,25 @@
 package pipeline
 
 import (
+	"crypto/sha256"
 	"fmt"
 	"io"
+	"io/ioutil"
+	"log"
 	"path/filepath"
 	"strings"
+
+	"bytes"
 
 	api "k8s.io/client-go/pkg/api/v1"
 	"k8s.io/client-go/pkg/util/yaml"
 )
+
+// Config contains a pipeline configuration
+type Config struct {
+	Hash []byte `json:"md5_hash"` // md5 hash of the configuration file
+	Spec *Spec  `json:"spec"`     // parsed configuration
+}
 
 // Spec defines the specification for a pipeline.
 type Spec struct {
@@ -215,7 +226,18 @@ func canonicalizeSpecValues(s *Spec) {
 	s.Storage = cleanURI(s.Storage)
 }
 
-func parsePipelineConfig(rd io.Reader, dataDir string) (*Spec, error) {
+func getConfigHash(rd io.Reader) []byte {
+	data, err := ioutil.ReadAll(rd)
+	if err != nil {
+		log.Fatal(err)
+	}
+	hash := sha256.Sum256(data)
+	return hash[:]
+}
+
+func parsePipelineConfig(rd io.Reader, dataDir string) (*Config, error) {
+	var buf bytes.Buffer
+	rd = io.TeeReader(rd, &buf)
 	decoder := yaml.NewYAMLOrJSONDecoder(rd, 4096)
 
 	var spec Spec
@@ -224,6 +246,11 @@ func parsePipelineConfig(rd io.Reader, dataDir string) (*Spec, error) {
 	}
 	defaultPipelineSpecValues(&spec, dataDir)
 	canonicalizeSpecValues(&spec)
-	err := validatePipelineConfig(&spec)
-	return &spec, err
+	if err := validatePipelineConfig(&spec); err != nil {
+		return nil, err
+	}
+	return &Config{
+		Hash: getConfigHash(&buf),
+		Spec: &spec,
+	}, nil
 }

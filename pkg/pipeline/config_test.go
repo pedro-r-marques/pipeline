@@ -90,11 +90,12 @@ func TestParser(t *testing.T) {
 		if err != nil {
 			t.Error(err)
 		}
-		spec, err := parsePipelineConfig(fp, "")
+		config, err := parsePipelineConfig(fp, "")
 		if err != nil {
 			t.Error(test.filename, err)
 			continue
 		}
+		spec := config.Spec
 		if !reflect.DeepEqual(spec, &test.spec) {
 			t.Errorf("expected %v, got %v", test.spec, spec)
 		}

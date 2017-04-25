@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: mr-sitedata-mr-cofilter-master-1
+  namespace: roque
+spec:
+  ports:
+    - name: grpc
+      port: 8080
+      protocol: TCP
+      targetPort: 8080
+  selector:
+    pipeline: mr_sitedata
+    id: "1"
+    task: master

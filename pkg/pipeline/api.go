@@ -261,7 +261,7 @@ func (svc *APIServer) putState(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if request.Stage >= len(pipeline.Spec.Tasks) {
+	if request.Stage >= len(pipeline.Config.Spec.Tasks) {
 		http.Error(w, fmt.Sprintf("invalid stage id %d", request.Stage), http.StatusBadRequest)
 		return
 	}

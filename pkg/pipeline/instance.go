@@ -1,11 +1,6 @@
 package pipeline
 
 import (
-	"encoding/json"
-	"log"
-	"os/exec"
-	"sort"
-	"strconv"
 	"time"
 
 	batchapi "k8s.io/client-go/pkg/apis/batch/v1"
@@ -17,6 +12,7 @@ type Instance struct {
 
 	// StartStage is stage that the pipeline was (re)started at.
 	StartStage int
+	Hash       []byte // TODO: md5 hash of config
 
 	workDir string
 	// JobsStatus []*jobStatus
@@ -27,6 +23,7 @@ type Instance struct {
 	taskList []*Task
 	// Result of current status
 	// Current *taskStatus
+	watcher *Watcher
 }
 
 type taskStatus struct {
@@ -96,50 +93,51 @@ func (s jobStatusByIndex) Less(i, j int) bool {
 
 // instanceJobStatus check the status of a running instance.
 func instanceJobStatus(p *Pipeline, instance *Instance) []*jobStatus {
-	args := []string{
-		"--namespace=" + p.Spec.Namespace,
-		"get", "jobs",
-		"-l", "pipeline=" + p.Spec.Name + ",id=" + strconv.Itoa(instance.ID),
-		"-o", "json",
-	}
-	cmd := exec.Command("kubectl", args...)
-	result, err := cmd.Output()
-	if err != nil {
-		log.Println(err)
-		return nil
-	}
+	// args := []string{
+	// 	"--namespace=" + p.Spec.Namespace,
+	// 	"get", "jobs",
+	// 	"-l", "pipeline=" + p.Spec.Name + ",id=" + strconv.Itoa(instance.ID),
+	// 	"-o", "json",
+	// }
+	// cmd := exec.Command("kubectl", args...)
+	// result, err := cmd.Output()
+	// if err != nil {
+	// 	log.Println(err)
+	// 	return nil
+	// }
 
-	var jobList batchapi.JobList
-	err = json.Unmarshal(result, &jobList)
-	if err != nil {
-		log.Println(err)
-		return nil
-	}
+	// var jobList batchapi.JobList
+	// err = json.Unmarshal(result, &jobList)
+	// if err != nil {
+	// 	log.Println(err)
+	// 	return nil
+	// }
 
-	var statusVec []*jobStatus
+	// var statusVec []*jobStatus
 
-	// Determine whether there are running tasks and update the status appropriatly.
-	for _, item := range jobList.Items {
-		// glog.V(3).Info(item.Name, item.Status)
-		taskIx, jobIx := p.getStageIndex(item.Labels["task"])
-		if taskIx == -1 {
-			// glog.Errorf("task %s %+v: not found", item.Name, item.Labels)
-			continue
-		}
+	// // Determine whether there are running tasks and update the status appropriatly.
+	// for _, item := range jobList.Items {
+	// 	// glog.V(3).Info(item.Name, item.Status)
+	// 	taskIx, jobIx := p.getStageIndex(item.Labels["task"])
+	// 	if taskIx == -1 {
+	// 		// glog.Errorf("task %s %+v: not found", item.Name, item.Labels)
+	// 		continue
+	// 	}
 
-		status := &jobStatus{
-			item.Name,
-			taskIx,
-			jobIx,
-			item.Status,
-		}
+	// 	status := &jobStatus{
+	// 		item.Name,
+	// 		taskIx,
+	// 		jobIx,
+	// 		item.Status,
+	// 	}
 
-		statusVec = append(statusVec, status)
-	}
+	// 	statusVec = append(statusVec, status)
+	// }
 
-	// sort statusVec by index
-	sort.Sort(jobStatusByIndex(statusVec))
-	return statusVec
+	// // sort statusVec by index
+	// sort.Sort(jobStatusByIndex(statusVec))
+	// return statusVec
+	return nil
 }
 
 type taskEvent interface {
@@ -192,76 +190,76 @@ func jobListCompare(current, next []*jobStatus, add, remove func(*jobStatus), co
 // - TODO: if the k8s job is trashing (status failing count incrementing) stop it
 // - task with multiple jobs;
 // - jobs could have been deleted via the k8s API.
-func jobStatusDelta(p *Pipeline, id int, current, next []*jobStatus) []taskEvent {
-	var eventList []taskEvent
+// func jobStatusDelta(p *Pipeline, id int, current, next []*jobStatus) []taskEvent {
+// 	var eventList []taskEvent
 
-	completeCount := make(map[int]int)
-	completeTime := make(map[int]time.Time)
+// 	completeCount := make(map[int]int)
+// 	completeTime := make(map[int]time.Time)
 
-	jobCheckStatus := func(status *jobStatus) {
-		if !status.IsRunning() {
-			if status.IsComplete() {
-				completeCount[status.taskIndex]++
-				ts := status.LastTransitionTime()
-				if lastTs := completeTime[status.taskIndex]; ts.After(lastTs) {
-					completeTime[status.taskIndex] = ts
-				}
-			} else if len(status.Conditions) > 0 || status.Failed > 0 {
-				// glog.V(2).Info(status)
-				eventList = append(eventList, &evTaskAbort{
-					p,
-					id,
-					status.taskIndex,
-					status.JobName,
-					status.LastTransitionTime(),
-				})
-			}
-		}
-	}
+// 	jobCheckStatus := func(status *jobStatus) {
+// 		if !status.IsRunning() {
+// 			if status.IsComplete() {
+// 				completeCount[status.taskIndex]++
+// 				ts := status.LastTransitionTime()
+// 				if lastTs := completeTime[status.taskIndex]; ts.After(lastTs) {
+// 					completeTime[status.taskIndex] = ts
+// 				}
+// 			} else if len(status.Conditions) > 0 || status.Failed > 0 {
+// 				// glog.V(2).Info(status)
+// 				eventList = append(eventList, &evTaskAbort{
+// 					p,
+// 					id,
+// 					status.taskIndex,
+// 					status.JobName,
+// 					status.LastTransitionTime(),
+// 				})
+// 			}
+// 		}
+// 	}
 
-	jobListCompare(current, next,
-		func(nextStatus *jobStatus) {
-			// glog.V(2).Infof("job %s was added", nextStatus.JobName)
-			jobCheckStatus(nextStatus)
-		},
-		func(currStatus *jobStatus) {
-			if currStatus.IsRunning() {
-				// glog.V(2).Infof("running job %s was deleted", currStatus.JobName)
-			}
-		},
-		func(currStatus, nextStatus *jobStatus) {
-			if currStatus.IsRunning() && !nextStatus.IsRunning() {
-				// glog.V(2).Infof("job %s status changed", currStatus.JobName)
-				jobCheckStatus(nextStatus)
-			}
-		},
-	)
+// 	jobListCompare(current, next,
+// 		func(nextStatus *jobStatus) {
+// 			// glog.V(2).Infof("job %s was added", nextStatus.JobName)
+// 			jobCheckStatus(nextStatus)
+// 		},
+// 		func(currStatus *jobStatus) {
+// 			if currStatus.IsRunning() {
+// 				// glog.V(2).Infof("running job %s was deleted", currStatus.JobName)
+// 			}
+// 		},
+// 		func(currStatus, nextStatus *jobStatus) {
+// 			if currStatus.IsRunning() && !nextStatus.IsRunning() {
+// 				// glog.V(2).Infof("job %s status changed", currStatus.JobName)
+// 				jobCheckStatus(nextStatus)
+// 			}
+// 		},
+// 	)
 
-	instance := p.getInstance(id)
-	if instance.Stage >= len(p.Spec.Tasks) {
-		return []taskEvent{
-			&evTaskAbort{p, id, instance.Stage, "", time.Now()},
-		}
-	}
-	task := p.Spec.Tasks[instance.Stage]
-	var completeNeeded int
-	if len(task.TemplateList) > 0 {
-		completeNeeded = len(task.TemplateList)
-	} else {
-		completeNeeded = 1
-	}
-	if completeCount[instance.Stage] == completeNeeded {
-		eventList = append(eventList, &evTaskComplete{
-			p, id, instance.Stage, completeTime[instance.Stage],
-		})
-	}
+// 	instance := p.getInstance(id)
+// 	if instance.Stage >= len(p.Spec.Tasks) {
+// 		return []taskEvent{
+// 			&evTaskAbort{p, id, instance.Stage, "", time.Now()},
+// 		}
+// 	}
+// 	task := p.Spec.Tasks[instance.Stage]
+// 	var completeNeeded int
+// 	if len(task.TemplateList) > 0 {
+// 		completeNeeded = len(task.TemplateList)
+// 	} else {
+// 		completeNeeded = 1
+// 	}
+// 	if completeCount[instance.Stage] == completeNeeded {
+// 		eventList = append(eventList, &evTaskComplete{
+// 			p, id, instance.Stage, completeTime[instance.Stage],
+// 		})
+// 	}
 
-	// returns events sorted: most recent first
-	if eventList != nil {
-		sort.Sort(sort.Reverse(taskEventsByTime(eventList)))
-	}
-	return eventList
-}
+// 	// returns events sorted: most recent first
+// 	if eventList != nil {
+// 		sort.Sort(sort.Reverse(taskEventsByTime(eventList)))
+// 	}
+// 	return eventList
+// }
 
 func taskState(statusVec []*jobStatus) *taskStatus {
 	var running, success, failed int

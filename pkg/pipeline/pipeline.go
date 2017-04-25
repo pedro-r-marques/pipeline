@@ -1,5 +1,7 @@
 package pipeline
 
+import "log"
+
 // ExecState defines the state of a job
 type ExecState string
 
@@ -15,10 +17,10 @@ const (
 // transfer mechanism between tasks.
 // A Pipeline is executed multiple time times with potentially different datasets.
 type Pipeline struct {
-	Name  string    `json:"name"`
-	URI   string    `json:"uri"`
-	Spec  *Spec     `json:"spec"`
-	State ExecState `json:"state"`
+	Name   string    `json:"name"`
+	URI    string    `json:"uri"`
+	Config *Config   `json:"config"`
+	State  ExecState `json:"state"`
 
 	Instances []*Instance
 }
@@ -31,6 +33,13 @@ func (p *Pipeline) createInstance() *Instance {
 		}
 	}
 	instance := makeInstance(max + 1)
+
+	var err error
+	instance.taskList, err = createTaskList(p.Config, instance.ID)
+	if err != nil {
+		log.Println(err)
+		return nil
+	}
 	p.Instances = append(p.Instances, instance)
 	return instance
 }
@@ -57,8 +66,9 @@ func (p *Pipeline) deleteInstance(target *Instance) {
 
 func (p *Pipeline) numStages() int {
 	var count int
-	for i := range p.Spec.Tasks {
-		t := &p.Spec.Tasks[i]
+	spec := p.Config.Spec
+	for i := range spec.Tasks {
+		t := &spec.Tasks[i]
 		if len(t.TemplateList) > 0 {
 			count += len(t.TemplateList)
 		} else {
@@ -69,8 +79,9 @@ func (p *Pipeline) numStages() int {
 }
 
 func (p *Pipeline) getStageIndex(taskName string) (int, int) {
-	for i := range p.Spec.Tasks {
-		t := &p.Spec.Tasks[i]
+	spec := p.Config.Spec
+	for i := range spec.Tasks {
+		t := &spec.Tasks[i]
 		if len(t.TemplateList) > 0 {
 			for k := 0; k < len(t.TemplateList); k++ {
 				if t.TemplateList[k].Job == taskName {

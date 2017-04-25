@@ -1,0 +1,14 @@
+name: mr_sitedata
+namespace: roque
+storage: gs://laserlike_roque/mr_sitedata
+tasks:
+  - name: compute
+    services:
+      - name: mr-cofilter-master
+        job: master
+        ports:
+          - name: grpc
+            port: 8080
+    jobs:
+        - job: master
+          image: gcr.io/laserlike-1167/roque-mr_cofilter_compute

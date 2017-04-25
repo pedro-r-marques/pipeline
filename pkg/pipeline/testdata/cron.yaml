@@ -1,0 +1,10 @@
+name: periodic
+namespace: roque
+storage: gs://laserlike_roque/pipeline
+schedule:
+  min: "45"
+  hour: "1"
+  day: 15,30
+tasks:
+  - name: hello-world
+    image: gcr.io/laserlike-1167/roque-hello-world

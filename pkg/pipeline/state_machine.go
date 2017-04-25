@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"log"
 	"time"
+
+	batch_v1 "k8s.io/client-go/pkg/apis/batch/v1"
 )
 
 type smEventType int
@@ -38,7 +40,6 @@ func (exec *mrExecutor) handlePipelineAdd(event *evPipelineAdd) {
 		p.State = StateStopped
 	case StateRunning:
 		// The job was previously running
-		exec.events <- &evPipelineStatus{p}
 	}
 }
 
@@ -56,14 +57,19 @@ func (exec *mrExecutor) handlePipelineRun(event *evPipelineRun) {
 	p := event.pipeline
 	instance := p.getInstance(event.instanceID)
 
-	// TODO: delete all jobs greater >= taskIndex
-	p.deleteInstanceResource(instance, "job", event.taskIndex)
-	p.deleteInstanceResource(instance, "svc", event.taskIndex)
+	// delete all jobs greater >= taskIndex
+	for i := event.taskIndex; i < len(instance.taskList); i++ {
+		p.deleteTaskResources(exec.k8sClient, instance, i)
+	}
 
 	p.State = StateRunning
 	instance.Stage = event.taskIndex
 	instance.State = StateRunning
 	// instance.JobsStatus = nil
+
+	watch := MakeWatcher(p, instance)
+	instance.watcher = watch
+	go watch.Run(exec.k8sClient, exec.events)
 
 	// create task
 	exec.events <- &evTaskCreate{p, instance.ID, event.taskIndex}
@@ -71,6 +77,8 @@ func (exec *mrExecutor) handlePipelineRun(event *evPipelineRun) {
 
 type evPipelineStatus struct {
 	pipeline *Pipeline
+	instance *Instance
+	status   batch_v1.JobStatus
 }
 
 func (ev *evPipelineStatus) eventType() smEventType { return eventPipelineStatus }
@@ -78,19 +86,29 @@ func (ev *evPipelineStatus) String() string {
 	return "PipelineStatus " + ev.pipeline.Name
 }
 func (exec *mrExecutor) handlePipelineStatus(event *evPipelineStatus) {
-	p := event.pipeline
-	var runCount int
-	for _, instance := range p.Instances {
-		if exec.updateInstanceStatus(p, instance) {
-			runCount++
+	// pipeline := event.pipeline
+	// instance := event.instance
+
+	// fetch the running task
+
+	// ensure that this job is in the running task
+	status := event.status
+
+	var complete bool
+	for _, cond := range status.Conditions {
+		if cond.Type == batch_v1.JobComplete {
+			complete = true
+			break
 		}
 	}
 
-	if runCount > 0 {
-		p.State = StateRunning
-	} else {
-		p.State = StateStopped
+	// if all jobs are complete, advance to next task
+	if complete {
+
 	}
+
+	// if the number of failures has gone past threshold abort
+	// 	exec.events <- &evTaskAbort{p, instance.ID, instance.Stage, "Too many failures", time.Now()}
 }
 
 type evInstanceDelete struct {
@@ -124,7 +142,7 @@ func (exec *mrExecutor) handleTaskCreate(event *evTaskCreate) {
 	pipeline := event.pipeline
 	instance := pipeline.getInstance(event.instanceID)
 
-	task := pipeline.Spec.Tasks[event.taskIndex]
+	task := pipeline.Config.Spec.Tasks[event.taskIndex]
 	if task.EtcdLock != "" {
 		// if err := etcdDeleteLock(pipeline.Spec.Namespace, pipeline.Spec.Name+"-"+task.EtcdLock, event.instanceID); err != nil {
 		// 	glog.Error(err)
@@ -135,8 +153,7 @@ func (exec *mrExecutor) handleTaskCreate(event *evTaskCreate) {
 		pipeline.createServices(instance, event.taskIndex)
 	}
 
-	pipeline.createTask(instance, event.taskIndex)
-	exec.updateInstanceStatus(pipeline, instance)
+	pipeline.createTask(exec.k8sClient, instance, event.taskIndex)
 }
 
 type evTaskAbort struct {
@@ -182,7 +199,7 @@ func (exec *mrExecutor) handleTaskComplete(event *evTaskComplete) {
 		return
 	}
 
-	if event.taskIndex < len(p.Spec.Tasks)-1 {
+	if event.taskIndex < len(p.Config.Spec.Tasks)-1 {
 		instance.Stage = event.taskIndex + 1
 		exec.events <- &evTaskCreate{p, event.instanceID, instance.Stage}
 	} else {
@@ -190,68 +207,38 @@ func (exec *mrExecutor) handleTaskComplete(event *evTaskComplete) {
 	}
 }
 
-const instanceFailMinAbort = 4
-
-func instanceFailuresShouldAbort(spec *Spec, taskIndex int, status []*jobStatus) bool {
-	var current *jobStatus
-	for _, s := range status {
-		if s.taskIndex == taskIndex {
-			current = s
-		}
-	}
-	if current == nil {
-		// glog.V(2).Infof("No current status for %s task %d", spec.Name, taskIndex)
-		return false
-	}
-	if current.Active == 0 {
-		return false
-	}
-	if current.Failed < instanceFailMinAbort {
-		return false
-	}
-	task := spec.Tasks[taskIndex]
-	var instanceCount int
-	if len(task.TemplateList) > 0 {
-		for i := range task.TemplateList {
-			tmpl := task.TemplateList[i]
-			instanceCount += tmpl.Instances
-		}
-	} else {
-		instanceCount = task.Instances
-	}
-
-	return int(current.Failed) > (instanceCount + instanceCount/2)
-}
-
-func (exec *mrExecutor) updateInstanceStatus(p *Pipeline, instance *Instance) bool {
-	// status := instanceJobStatus(p, instance)
-	// events := jobStatusDelta(p, instance.ID, instance.JobsStatus, status)
-	// instance.JobsStatus = status
-	// nextStatus := taskState(status)
-	// if instanceFailuresShouldAbort(p.Spec, instance.Stage, status) {
-	// 	exec.events <- &evTaskAbort{p, instance.ID, instance.Stage, "Too many failures", time.Now()}
-	// 	instance.Current = nextStatus
-	// 	return true
-	// }
-	// if events != nil && len(events) > 0 {
-	// 	lastEv := events[0]
-	// 	exec.events <- lastEv
-	// } else if instance.Current != nil &&
-	// 	instance.Current.Running == 0 && nextStatus.Running == 0 {
-	// 	instance.State = StateStopped
-	// }
-	// instance.Current = nextStatus
-
-	return instance.State == StateRunning
-}
-
 func (exec *mrExecutor) periodicCheck() {
 	exec.Lock()
 	defer exec.Unlock()
+}
 
-	for _, j := range exec.pipelines {
-		if j.State == StateRunning {
-			exec.events <- &evPipelineStatus{j}
+func (exec *mrExecutor) runOnce(t *time.Ticker) {
+	select {
+	case ev := <-exec.events:
+		// glog.V(1).Info(ev.String())
+		log.Println(ev.String())
+		switch ev.eventType() {
+		case eventPipelineAdd:
+			exec.handlePipelineAdd(ev.(*evPipelineAdd))
+		case eventPipelineRun:
+			exec.handlePipelineRun(ev.(*evPipelineRun))
+		case eventPipelineStatus:
+			exec.handlePipelineStatus(ev.(*evPipelineStatus))
+		case eventInstanceDelete:
+			exec.handleInstanceDelete(ev.(*evInstanceDelete))
+		case eventTaskCreate:
+			exec.handleTaskCreate(ev.(*evTaskCreate))
+		case eventTaskAbort:
+			exec.handleTaskAbort(ev.(*evTaskAbort))
+		case eventTaskComplete:
+			exec.handleTaskComplete(ev.(*evTaskComplete))
+
+		}
+
+	case <-t.C:
+		exec.periodicCheck()
+		if exec.checkpointFile != "" {
+			exec.checkpointConfig()
 		}
 	}
 }
@@ -259,32 +246,6 @@ func (exec *mrExecutor) periodicCheck() {
 func (exec *mrExecutor) run() {
 	t := time.NewTicker(time.Minute)
 	for {
-		select {
-		case ev := <-exec.events:
-			// glog.V(1).Info(ev.String())
-			switch ev.eventType() {
-			case eventPipelineAdd:
-				exec.handlePipelineAdd(ev.(*evPipelineAdd))
-			case eventPipelineRun:
-				exec.handlePipelineRun(ev.(*evPipelineRun))
-			case eventPipelineStatus:
-				exec.handlePipelineStatus(ev.(*evPipelineStatus))
-			case eventInstanceDelete:
-				exec.handleInstanceDelete(ev.(*evInstanceDelete))
-			case eventTaskCreate:
-				exec.handleTaskCreate(ev.(*evTaskCreate))
-			case eventTaskAbort:
-				exec.handleTaskAbort(ev.(*evTaskAbort))
-			case eventTaskComplete:
-				exec.handleTaskComplete(ev.(*evTaskComplete))
-
-			}
-
-		case <-t.C:
-			exec.periodicCheck()
-			if exec.checkpointFile != "" {
-				exec.checkpointConfig()
-			}
-		}
+		exec.runOnce(t)
 	}
 }

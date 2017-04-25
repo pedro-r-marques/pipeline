@@ -1,0 +1,60 @@
+{
+  "kind": "Job",
+  "apiVersion": "batch/v1",
+  "metadata": {
+    "name": "mr-sitedata-token-allocator-1",
+    "namespace": "roque",
+    "creationTimestamp": null,
+    "labels": {
+      "id": "1",
+      "pipeline": "mr_sitedata",
+      "task": "token-allocator"
+    }
+  },
+  "spec": {
+    "template": {
+      "metadata": {
+        "creationTimestamp": null,
+        "labels": {
+          "id": "1",
+          "pipeline": "mr_sitedata",
+          "task": "token-allocator"
+        }
+      },
+      "spec": {
+        "containers": [
+          {
+            "name": "token-allocator",
+            "image": "gcr.io/laserlike-1167/roque-mr_cooccur_token_allocator",
+            "args": [
+              "-logtostderr",
+              "-workdir=gs://laserlike_roque/mr/1",
+              "-v=3"
+            ],
+            "env": [
+              {
+                "name": "POD_NAME",
+                "valueFrom": {
+                  "fieldRef": {
+                    "fieldPath": "metadata.name"
+                  }
+                }
+              },
+              {
+                "name": "KUBERNETES_NAMESPACE",
+                "valueFrom": {
+                  "fieldRef": {
+                    "fieldPath": "metadata.namespace"
+                  }
+                }
+              }
+            ],
+            "resources": {}
+          }
+        ],
+        "restartPolicy": "Never"
+      }
+    }
+  },
+  "status": {}
+}

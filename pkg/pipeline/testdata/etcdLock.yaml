@@ -1,0 +1,8 @@
+name: mr_sitedata
+namespace: roque
+storage: gs://laserlike_roque/mr
+tasks:
+  - name: normalize
+    image: gcr.io/laserlike-1167/roque-normalize
+    instances: 4
+    etcdLock: mr_normalize
