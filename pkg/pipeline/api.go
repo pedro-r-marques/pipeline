@@ -254,7 +254,15 @@ func (svc *APIServer) putState(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
+
 	case ActionStop:
+		if request.ID > 0 {
+			instance := pipeline.getInstance(request.ID)
+			if instance == nil {
+				http.Error(w, fmt.Sprintf("invalid instance id: %d", request.ID), http.StatusBadRequest)
+				return
+			}
+		}
 
 	default:
 		http.Error(w, string(request.Action), http.StatusBadRequest)
