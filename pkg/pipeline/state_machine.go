@@ -66,7 +66,6 @@ func (exec *mrExecutor) handlePipelineRun(event *evPipelineRun) {
 	p.State = StateRunning
 	instance.Stage = event.taskIndex
 	instance.State = StateRunning
-	// instance.JobsStatus = nil
 
 	watch := MakeWatcher(p, instance)
 	instance.watcher = watch
@@ -95,15 +94,15 @@ func (exec *mrExecutor) handlePipelineStatus(event *evPipelineStatus) {
 	task := instance.TaskList[instance.Stage]
 
 	// ensure that this job is in the running task
-	var found bool
-	for _, id := range task.JobIDs {
+	var jobName string
+	for k, id := range task.JobIDs {
 		if event.jobID == id {
-			found = true
+			jobName = k
 			break
 		}
 	}
 
-	if !found {
+	if jobName == "" {
 		log.Printf("unexpected event for job %s", event.jobID)
 		return
 	}
@@ -131,8 +130,17 @@ func (exec *mrExecutor) handlePipelineStatus(event *evPipelineStatus) {
 		}
 		return
 	}
+
+	jcfg := task.getJobByName(jobName)
+	threshold := *jcfg.Spec.Completions
+	if threshold < 4 {
+		threshold = 4
+	}
+
 	// if the number of failures has gone past threshold abort
-	// 	exec.events <- &evTaskAbort{p, instance.ID, instance.Stage, "Too many failures", time.Now()}
+	if status.Failed > threshold {
+		exec.events <- &evTaskAbort{pipeline, instance.ID, instance.Stage, "Too many failures", time.Now()}
+	}
 }
 
 type evPipelineStop struct {
@@ -163,6 +171,23 @@ func (exec *mrExecutor) handleInstanceDelete(event *evInstanceDelete) {
 	if instance != nil {
 		p.deleteInstance(instance)
 	}
+}
+
+func (exec *mrExecutor) instanceStop(p *Pipeline, instance *Instance) {
+	instance.State = StateStopped
+	instance.watcher.Shutdown()
+	instance.watcher = nil
+
+	var running int
+	for _, instanceIter := range p.Instances {
+		if instanceIter.State == StateRunning {
+			running++
+		}
+	}
+	if running == 0 {
+		exec.events <- &evPipelineStop{p}
+	}
+
 }
 
 type evTaskCreate struct {
@@ -208,11 +233,15 @@ func (ev *evTaskAbort) String() string {
 func (ev *evTaskAbort) transitionTime() time.Time { return ev.transitionTs }
 
 func (exec *mrExecutor) handleTaskAbort(event *evTaskAbort) {
-	instance := event.pipeline.getInstance(event.instanceID)
-	if instance != nil {
-		event.pipeline.stopInstance(instance)
-		instance.State = StateStopped
+	p := event.pipeline
+	instance := p.getInstance(event.instanceID)
+	if instance == nil {
+		log.Printf("%s unknown instance: %d", p.Name, event.instanceID)
+		return
 	}
+
+	p.cancelInstance(exec.k8sClient, instance)
+	exec.instanceStop(p, instance)
 }
 
 type evTaskComplete struct {
@@ -242,17 +271,8 @@ func (exec *mrExecutor) handleTaskComplete(event *evTaskComplete) {
 		return
 	}
 
-	instance.State = StateStopped
-	var running int
-	for _, instanceIter := range p.Instances {
-		if instanceIter.State == StateRunning {
-			running++
-		}
-	}
-	if running == 0 {
-		exec.events <- &evPipelineStop{p}
-	}
-
+	// Instance Complete
+	exec.instanceStop(p, instance)
 }
 
 func (exec *mrExecutor) periodicCheck() {

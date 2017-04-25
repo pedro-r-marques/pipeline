@@ -9,8 +9,9 @@ import (
 	"strconv"
 	"strings"
 
-	api "k8s.io/client-go/pkg/api/v1"
-	batch "k8s.io/client-go/pkg/apis/batch/v1"
+	api_v1 "k8s.io/client-go/pkg/api/v1"
+	batch_v1 "k8s.io/client-go/pkg/apis/batch/v1"
+	"k8s.io/client-go/pkg/types"
 	"k8s.io/client-go/pkg/util/yaml"
 )
 
@@ -21,7 +22,7 @@ type TemplateVars struct {
 	Instances   int
 	Parallelism int
 	Args        []string // Container arguments
-	Resources   api.ResourceRequirements
+	Resources   api_v1.ResourceRequirements
 }
 
 // ServiceVars defines the variables passed to the service yaml template
@@ -31,15 +32,15 @@ type ServiceVars struct {
 	Ports    []PortSpec
 }
 
-func isResourceSpecSet(rs *api.ResourceRequirements) bool {
+func isResourceSpecSet(rs *api_v1.ResourceRequirements) bool {
 	return isResourceListSet(rs.Requests) || isResourceListSet(rs.Limits)
 }
 
-func isResourceListSet(r api.ResourceList) bool {
+func isResourceListSet(r api_v1.ResourceList) bool {
 	return len(r) > 0
 }
 
-func printResourceList(rlist api.ResourceList, indent int) string {
+func printResourceList(rlist api_v1.ResourceList, indent int) string {
 	var repr string
 	var count int
 	for k, v := range rlist {
@@ -172,7 +173,7 @@ func createK8SConfig(tmplFile string, writer io.Writer, vars interface{}) error 
 	return tmpl.Execute(writer, vars)
 }
 
-func makeK8SJobSpecFromSpec(spec *Spec, instanceID int, taskSpec *TaskSpec, jspec *JobTemplate) (*batch.Job, error) {
+func makeK8SJobSpecFromSpec(spec *Spec, instanceID int, taskSpec *TaskSpec, jspec *JobTemplate) (*batch_v1.Job, error) {
 	buffer := new(bytes.Buffer)
 	vars := makeTemplateVars(spec, instanceID, taskSpec, jspec)
 	if err := createK8SConfig(jspec.Template, buffer, vars); err != nil {
@@ -180,7 +181,7 @@ func makeK8SJobSpecFromSpec(spec *Spec, instanceID int, taskSpec *TaskSpec, jspe
 	}
 
 	decoder := yaml.NewYAMLOrJSONDecoder(buffer, 4096)
-	var job batch.Job
+	var job batch_v1.Job
 	if err := decoder.Decode(&job); err != nil {
 		return nil, err
 	}
@@ -189,7 +190,7 @@ func makeK8SJobSpecFromSpec(spec *Spec, instanceID int, taskSpec *TaskSpec, jspe
 
 // makeTaskFromSpec creates a Task from the pipeline spec and templates.
 func makeTaskFromSpec(spec *Spec, instanceID int, taskSpec *TaskSpec) (*Task, error) {
-	var jobs []*batch.Job
+	var jobs []*batch_v1.Job
 
 	for _, jspec := range taskSpec.JobSpecs() {
 		job, err := makeK8SJobSpecFromSpec(spec, instanceID, taskSpec, jspec)
@@ -199,7 +200,8 @@ func makeTaskFromSpec(spec *Spec, instanceID int, taskSpec *TaskSpec) (*Task, er
 		jobs = append(jobs, job)
 	}
 	task := &Task{
-		jobs: jobs,
+		jobs:   jobs,
+		JobIDs: make(map[string]types.UID),
 	}
 	return task, nil
 }

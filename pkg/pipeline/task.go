@@ -19,9 +19,18 @@ type Task struct {
 	jobs []*batch_v1.Job
 
 	// scheduled job IDs
-	JobIDs []types.UID
+	JobIDs map[string]types.UID
 
 	completed int
+}
+
+func (t *Task) getJobByName(name string) *batch_v1.Job {
+	for _, job := range t.jobs {
+		if job.Name == name {
+			return job
+		}
+	}
+	return nil
 }
 
 func createTaskList(config *Config, instanceID int) ([]*Task, error) {
@@ -44,7 +53,7 @@ func (p *Pipeline) createTask(k8sClient kubernetes.Interface, instance *Instance
 		if err != nil {
 			return err
 		}
-		task.JobIDs = append(task.JobIDs, j.UID)
+		task.JobIDs[job.Name] = j.UID
 	}
 	return nil
 }
@@ -120,24 +129,23 @@ func (p *Pipeline) createServices(instance *Instance, stage int) error {
 	return nil
 }
 
-func (p *Pipeline) stopInstance(instance *Instance) {
-	// args := []string{
-	// 	"--namespace=" + p.Spec.Namespace,
-	// 	"resize", "--replicas=0",
-	// }
+// cancelInstance changes the number of desired job replicas to 0.
+func (p *Pipeline) cancelInstance(k8sClient kubernetes.Interface, instance *Instance) {
+	task := instance.TaskList[instance.Stage]
 
-	// for _, status := range instance.JobsStatus {
-	// 	if !status.IsRunning() {
-	// 		continue
-	// 	}
-	// 	cmdArgs := append(args, "job/"+status.JobName)
-	// 	// glog.V(3).Infof("resize job %s", status.JobName)
-	// 	cmd := exec.Command("kubectl", cmdArgs...)
-	// 	output, err := cmd.CombinedOutput()
-	// 	if err != nil {
-	// 		log.Println(string(output))
-	// 	} else {
-	// 		// glog.V(3).Info(string(output))
-	// 	}
-	// }
+	jobService := k8sClient.BatchV1().Jobs(p.Config.Spec.Namespace)
+	for _, jcfg := range task.jobs {
+		j, err := jobService.Get(jcfg.Name)
+		if err != nil {
+			log.Println(err)
+			continue
+		}
+		if j.Status.Active > 0 {
+			*j.Spec.Completions = 0
+			_, err := jobService.Update(j)
+			if err != nil {
+				log.Println(err)
+			}
+		}
+	}
 }

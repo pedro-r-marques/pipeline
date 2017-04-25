@@ -143,3 +143,74 @@ func TestPipelineExec(t *testing.T) {
 		t.Error(pipeline.State)
 	}
 }
+
+func TestTaskAbort(t *testing.T) {
+	exec := &mrExecutor{
+		pipelines: make(map[string]*Pipeline),
+		dataDir:   "testdata",
+		events:    make(chan smEvent, 16),
+		k8sClient: fake.NewSimpleClientset(),
+	}
+
+	config := &Config{
+		Spec: &Spec{
+			Name:      "test",
+			Namespace: "roque",
+			Storage:   "gs://laserlike_roque/test",
+			Tasks: []TaskSpec{
+				{
+					Name: "step1",
+					JobTemplate: JobTemplate{
+						Image:       "step1",
+						Instances:   4,
+						Parallelism: 2,
+					},
+				},
+			},
+		},
+	}
+
+	defaultPipelineSpecValues(config.Spec, "../../templates")
+	pipeline := &Pipeline{
+		Name:   "test",
+		State:  StateStopped,
+		Config: config,
+	}
+	exec.pipelines[pipeline.Name] = pipeline
+
+	exec.SetState(pipeline, ActionStart, 0, 0)
+
+	timeout := time.NewTicker(time.Second)
+	exec.runOnce(timeout)
+
+	if pipeline.State != StateRunning {
+		t.Error(pipeline.State)
+	}
+
+	exec.runOnce(timeout)
+	jobList, err := exec.k8sClient.BatchV1().Jobs(config.Spec.Namespace).List(api_v1.ListOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(jobList.Items) != 1 {
+		t.Error(len(jobList.Items))
+	}
+
+	job := &jobList.Items[0]
+	exec.events <- &evPipelineStatus{
+		pipeline: pipeline,
+		instance: pipeline.Instances[0],
+		jobID:    job.UID,
+		status: batch_v1.JobStatus{
+			Failed: 5,
+		},
+	}
+
+	exec.runOnce(timeout)
+	exec.runOnce(timeout)
+	exec.runOnce(timeout)
+
+	if pipeline.State != StateStopped {
+		t.Error(pipeline.State)
+	}
+}
