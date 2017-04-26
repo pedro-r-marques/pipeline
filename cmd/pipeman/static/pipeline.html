@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+      <title>Pipeline</title>
+      <link href="pipeline.css" rel="stylesheet">
+      <meta name="viewport" content="width=device-width, initial-scale=1">
+      <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap-theme.min.css" integrity="sha384-rHyoN1iRsVXV4nD0JutlnGaslCJuC7uwjduW9SVrLvRYooPp2bWYgmgJQIXwl/Sp" crossorigin="anonymous">
+  </head>
+  <body>
+    <script src="https://code.jquery.com/jquery-3.2.1.min.js" integrity="sha256-hwg4gsxgFZhOsEEamdOYGBf13FyQuiTwlAQgxVSNgt4=" crossorigin="anonymous"></script>
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js" integrity="sha384-Tc5IQib027qvyjSMfHjOMaLkfuWVxZxUPnCJA7l2mCWNIpG9mGCD8wGNIcPD7Txa" crossorigin="anonymous"></script>
+      <div class="container">
+          <div id="navbar"/>
+      </div>
+
+      <div class="container-fluid">
+          <div class="row">
+            <div class="col-sm-3 col-md-2 sidebar">
+            </div> <!-- sidebar -->
+            <div class="col-sm-9 col-sm-offset-3 col-md-10 col-md-offset-2 main">
+                <h1 id="pipeline-header" class="page-header"></h1>
+
+                <h2 class="sub-header">Tasks</h2>
+                <div class="table-responsive">
+                <table id="task-table" class="table table-striped">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Image</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table> <!-- task-table -->
+                </div> <!-- table-responsive -->
+
+                <div id="schedule">
+                    <h2 class="sub-header">Schedule</h2>
+                    <table id="schedule-table" class="table">
+                        <thead>
+                            <tr>
+                                <th>Mins</th>
+                                <th>Hours</th>
+                                <th>Days</th>
+                                <th>Weekdays</th>
+                                <th>Months</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+
+                <h2 class="sub-header">Instances</h2>
+                <div class="table-responsive">
+                <table id="instance-table" class="table table-striped">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>State</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table> <!-- instance-table -->
+                </div> <!-- table-responsive -->
+
+                <form id="add-instance" role="form">
+                    <button type="submit" class="btn btn-primary">Add</button>
+                </form>
+
+                <div class="row">
+                    <hr/>
+                </div>
+
+                <form id="pipeline-action" class="col-md-10" role="form">
+                    <div class="form-group">
+                        <label id="pipeline-config" class="col-md-8"></label>
+                        <button type="submit" id="reload" class="btn btn-warning">Reload</button>
+                        <button type="submit" id="delete" class="btn btn-danger">Delete</button>
+                    </div>
+                </form>
+            </div> <!-- main -->
+          </div>
+      </div>
+
+    <script src="util.js" type="text/javascript"></script>
+    <script src="pipeline.js" type="text/javascript"></script>
+    <script type="text/javascript">
+      (function($){
+          $(document).ready(function(){
+              $('#navbar').load("navbar.html", function() {
+              });
+
+              loadPipelineDesc($('#pipeline-header'));
+              loadPipelineDetailView(
+                  $('#pipeline-config'), $('#schedule'), $('#instance-table'), $('#task-table'));
+          });
+          $('#add-instance').submit(addInstance);
+          $('#pipeline-action').submit(pipelineActionEvent);
+      })(jQuery);
+    </script>
+
+  </body>
+</html>

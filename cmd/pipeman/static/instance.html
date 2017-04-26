@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+      <title>Pipeline</title>
+      <link href="pipeline.css" rel="stylesheet">
+      <meta name="viewport" content="width=device-width, initial-scale=1">
+      <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap-theme.min.css" integrity="sha384-rHyoN1iRsVXV4nD0JutlnGaslCJuC7uwjduW9SVrLvRYooPp2bWYgmgJQIXwl/Sp" crossorigin="anonymous">
+  </head>
+  <body>
+    <script src="https://code.jquery.com/jquery-3.2.1.min.js" integrity="sha256-hwg4gsxgFZhOsEEamdOYGBf13FyQuiTwlAQgxVSNgt4=" crossorigin="anonymous"></script>
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js" integrity="sha384-Tc5IQib027qvyjSMfHjOMaLkfuWVxZxUPnCJA7l2mCWNIpG9mGCD8wGNIcPD7Txa" crossorigin="anonymous"></script>
+      <div class="container">
+          <div id="navbar"/>
+      </div>
+
+      <div class="container-fluid">
+          <div class="row">
+            <div class="col-sm-3 col-md-2 sidebar">
+            </div> <!-- sidebar -->
+            <div class="col-sm-9 col-sm-offset-3 col-md-10 col-md-offset-2 main">
+                <h1 id="instance-header" class="page-header"></h1>
+                <div class="row">
+                    <div class="col-sm-3 col-md-2">
+                        <p id="instance-stage-element"></p>
+                    </div>
+                    <div class="col-sm-9 col-md-10">
+                        <p id="task-name-element"></p>
+                    </div>
+                </div>
+                <div class="table-responsive">
+                    <table id="task-action-table" class="table">
+                        <thead>
+                            <tr>
+                                <th>Name</th><th></th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+                <div class="row">
+                    <div class=col-md-12><hr/></div>
+                </div>
+                <div class="row">
+                    <div id="task-status-element" class="col-sm-12 col-md-12">
+                    </div>
+                </div>
+                <h2>Job status</h2>
+                <div class="table-responsive">
+                <table id="job-status-table" class="table table-striped">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Status</th>
+                            <th>Active</th>
+                            <th>Succeeded</th>
+                            <th>Failed</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table> <!-- task-table -->
+                </div> <!-- table-responsive -->
+
+                <div class="btn-group">
+                    <button type="submit" class="btn btn-info" data-toggle="modal" data-target="#dialog-clone">Clone</button>
+                    <button id="delete-instance" type="submit" class="btn btn-danger">Delete</button>
+                </div>
+
+            <div id="dialog-clone" class="modal" role="dialog">
+                <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <button type="button" class="close" data-dismiss="modal" aria-hidden="true">×</button>
+                        <h3>Clone Instance</h3>
+                    </div>
+                    <div class="modal-body">
+                        <form role="form">
+                            <div class="form-group">
+                                <label for="include">Include pattern:</label>
+                                <input id="clone-include" type="text"></input>
+                            </div>
+                            <div class="form-group">
+                                <label for="exclude">Exclude pattern:</label>
+                                <input id="clone-exclude" type="text"></input>
+                            </div>
+                        </form>
+                    </div>
+                    <div class="modal-footer">
+                        <button id="do-clone" type="button" class="btn btn-default" data-dismiss="modal">OK</button>
+                    </div>
+                </div></div>
+            </div>
+
+            </div> <!-- main -->
+          </div>
+      </div>
+
+    <script src="util.js" type="text/javascript"></script>
+    <script src="instance.js" type="text/javascript"></script>
+    <script type="text/javascript">
+      (function($){
+          function loadDynamicContent() {
+              loadInstanceView(
+                  $('#instance-stage-element'),
+                  $('#task-name-element'),
+                  $('#task-status-element'),
+                  $('#job-status-table')
+              );
+          }
+          $(document).ready(function(){
+              $('#navbar').load("navbar.html", function() {
+              });
+              loadInstanceDesc($('#instance-header'));
+              loadTaskActionTable($('#task-action-table'));
+              loadDynamicContent();
+          });
+          $('#delete-instance').click(deleteInstance);
+          $('#do-clone').click(function(){
+              cloneInstance($('#clone-include').val(), $('#clone-exclude').val());
+          });
+          setInterval(loadDynamicContent, 1000);
+      })(jQuery);
+    </script>
+
+  </body>
+</html>

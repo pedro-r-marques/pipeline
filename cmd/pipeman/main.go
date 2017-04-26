@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"log"
 	"net/http"
 
 	"github.com/pedro-r-marques/pipeline/pkg/pipeline"
@@ -32,7 +33,7 @@ func main() {
 	exec := pipeline.NewExecutor(dataDir)
 	if jobConfigFile != "" {
 		if err := exec.Configure(jobConfigFile); err != nil {
-			glog.Error(err)
+			log.Println(err)
 		}
 		exec.SetCheckpointFile(jobConfigFile)
 	}
