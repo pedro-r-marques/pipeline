@@ -283,13 +283,13 @@ func TestPipelineRestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var completions int32
+	var parallelism int32
 	for _, j := range jobList.Items {
-		completions += *j.Spec.Completions
+		parallelism += *j.Spec.Parallelism
 	}
 
-	if completions != 0 {
-		t.Fatal(completions)
+	if parallelism != 0 {
+		t.Fatal(parallelism)
 	}
 
 	exec.runOnce(timeout)

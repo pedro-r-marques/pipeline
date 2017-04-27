@@ -132,7 +132,14 @@ func (exec *mrExecutor) handlePipelineStatus(event *evPipelineStatus) {
 	}
 
 	jcfg := task.getJobByName(jobName)
-	threshold := *jcfg.Spec.Completions
+	if jcfg == nil {
+		log.Printf("unknown job %s", jobName)
+		return
+	}
+	var threshold int32
+	if jcfg.Spec.Completions != nil {
+		threshold = *jcfg.Spec.Completions
+	}
 	if threshold < 4 {
 		threshold = 4
 	}

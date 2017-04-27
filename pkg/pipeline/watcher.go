@@ -33,7 +33,7 @@ func (w *Watcher) runOnce(podWatcher, jobWatcher watch.Interface, eventChan chan
 		case watch.Deleted:
 		case watch.Modified:
 			pod := ev.Object.(*api_v1.Pod)
-			log.Println(ev.Type, pod.Name)
+			log.Println("POD", ev.Type, pod.Name)
 		}
 
 	case ev, ok := <-jobWatcher.ResultChan():
@@ -44,6 +44,7 @@ func (w *Watcher) runOnce(podWatcher, jobWatcher watch.Interface, eventChan chan
 		case watch.Added:
 		case watch.Modified:
 			job := ev.Object.(*batch_v1.Job)
+			log.Println("Job", ev.Type, job.Name)
 			eventChan <- &evPipelineStatus{
 				w.pipeline,
 				w.instance,

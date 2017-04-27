@@ -140,8 +140,8 @@ func (p *Pipeline) cancelInstance(k8sClient kubernetes.Interface, instance *Inst
 			log.Println(err)
 			continue
 		}
-		if *j.Spec.Completions > 0 {
-			*j.Spec.Completions = 0
+		if *j.Spec.Parallelism > 0 {
+			*j.Spec.Parallelism = 0
 			_, err := jobService.Update(j)
 			if err != nil {
 				log.Println(err)
