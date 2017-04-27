@@ -88,6 +88,9 @@ function loadInstanceView(tableElement, instanceList) {
     var tbody = tableElement.find('tbody');
     tbody.empty();
 
+    if (!instanceList) {
+        return
+    }
     var elements = ['RunStage'];
 
     for (var i=0; i < instanceList.length; i++) {
@@ -117,8 +120,8 @@ function loadPipelineDetailView(configElement, scheduleElement, instanceTableEle
             console.debug(response);
             configElement.empty();
             configElement.append(response.uri);
-            loadTaskView(taskTableElement, response.spec.Tasks);
-            loadScheduleView(scheduleElement, response.spec);
+            loadTaskView(taskTableElement, response.config.spec.Tasks);
+            loadScheduleView(scheduleElement, response.config.spec);
             loadInstanceView(instanceTableElement, response.Instances)   
         },
         error: function(jqXHR, textStatus, errorThrown) {
